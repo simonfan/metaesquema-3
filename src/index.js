@@ -62,7 +62,7 @@ function setup(options) {
   		wireframes: false,
       // showPositions: true,
       // showAngleIndicator: true,
-  		background: '#1BA158',
+  		background: '#1B108F',
   		pixelRatio: 1,
 
   		width: CANVAS_WIDTH,
@@ -169,7 +169,7 @@ function setup(options) {
           }
         },
         render: {
-          fillStyle: '#F66D63',
+          fillStyle: '#711619',
         },
       }
     ),
@@ -189,7 +189,7 @@ function setup(options) {
           }
         },
         render: {
-          fillStyle: '#E2B33D',
+          fillStyle: '#711619',
         },
       }
     )
@@ -273,6 +273,9 @@ function setup(options) {
       slop: 0,
       density: 100,
       // inertia: Infinity,
+      render: {
+        fillStyle: '#041C3A',
+      },
       plugin: {
         sound: {
           audio: (body, otherBody, options) => {
@@ -322,6 +325,9 @@ function setup(options) {
       slop: 0,
       density: 0.0001,
       // inertia: Infinity,
+      render: {
+        fillStyle: '#D5D6D8',
+      },
       plugin: {
         sound: {
           audio: (body, otherBody, options) => {
