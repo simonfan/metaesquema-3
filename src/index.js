@@ -1,4 +1,5 @@
 const Matter = require('matter-js')
+const Metaesquema = require('metaesquema-util')
 const instruments = require('./instruments')
 
 /**
@@ -15,12 +16,8 @@ const MouseConstraint = Matter.MouseConstraint
 const Events = Matter.Events
 const Common = Matter.Common
 
-const MatterSound = require('./lib/matter-sound')
+const MatterCollision = require('matter-collision')
 const MatterCollisionStyles = require('./lib/matter-collision-styles')
-
-function randomAudio() {
-	return AUDIOS[Math.floor(Math.random()*AUDIOS.length)].name
-}
 
 function setup(options) {
   const CANVAS_WIDTH = options.canvasWidth
@@ -69,81 +66,61 @@ function setup(options) {
   		height: CANVAS_HEIGHT,
   	}
   })
-
-  // create runner
-  let runner = Runner.create()
-
-  Runner.run(runner, engine)
   Render.run(render)
 
+  // create engine runner
+  let runner = Metaesquema.Matter.Runner.createMixedRunner(engine)
+  runner.run()
+
+  let wallGenerator = Metaesquema.Matter.Bodies.walls({
+    width: CANVAS_WIDTH,
+    height: CANVAS_HEIGHT,
+  })
+
   let walls = [
-  	// ceiling
-		Bodies.rectangle(
-	    CANVAS_WIDTH / 2, // align center to center
-	    -(60 / 2),         
-	    CANVAS_WIDTH, // width
-	    60,  // height
-	    {
-	      isStatic: true,
-	      restitution: 1,
-        plugin: {
-          sound: {
-            bodyName: 'CEILING',
-          }
+    wallGenerator.top({
+      label: 'CEILING',
+      restitution: 1,
+      plugin: {
+        sound: {
+          bodyName: 'CEILING'
         }
-	    }
-	  ),
-	  // ground
-		Bodies.rectangle(
-	    CANVAS_WIDTH / 2, // align center to center
-	    CANVAS_HEIGHT + (60 / 2),         
-	    CANVAS_WIDTH, // width
-	    60,  // height
-	    {
-	      isStatic: true,
-	      restitution: 1,
-        friction: 0,
-        frictionStatic: 0,
-        plugin: {
-          sound: {
-            bodyName: 'GROUND',
-          }
+      }
+    }),
+
+    wallGenerator.bottom({
+      label: 'GROUND',
+      restitution: 1,
+      friction: 0,
+      frictionStatic: 0,
+      plugin: {
+        sound: {
+          bodyName: 'GROUND',
         }
-	    }
-	  ),
-    
-	  // left
-		Bodies.rectangle(
-	    -(60 / 2), // align center to center
-	    CANVAS_HEIGHT / 2,         
-	    60, // width
-	    CANVAS_HEIGHT,  // height
-	    {
-	      isStatic: true,
-	      restitution: 1,
-        plugin: {
-          sound: {
-            bodyName: 'LEFT',
-          }
+      }
+    }),
+
+    wallGenerator.left({
+      label: 'LEFT',
+      isStatic: true,
+      restitution: 1,
+      plugin: {
+        sound: {
+          bodyName: 'LEFT',
         }
-	    }
-	  ),
-	  // right
-		Bodies.rectangle(
-	    CANVAS_WIDTH + (60 / 2), // align center to center
-	    CANVAS_HEIGHT / 2,         
-	    60, // width
-	    CANVAS_HEIGHT,  // height
-	    {
-	      isStatic: true,
-	      restitution: 1,
-        plugin: {
-          sound: {
-            bodyName: 'RIGHT',
-          }
+      }
+    }),
+
+    wallGenerator.right({
+      label: 'RIGHT',
+      isStatic: true,
+      restitution: 1,
+      plugin: {
+        sound: {
+          bodyName: 'RIGHT',
         }
-	    }
-	  ),
+      }
+    }),
 	]
 
   World.add(engine.world, walls)
@@ -162,9 +139,11 @@ function setup(options) {
         isStatic: true,
         restitution: 1,
         plugin: {
-          sound: {
-            audio: (body) => {
-              instruments.conga.triggerAttack('G3')
+          collision: {
+            start: (collision) => {
+              if (collision.other.isSensor) {
+                instruments.conga.triggerAttack('G3')
+              }
             }
           }
         },
@@ -182,9 +161,11 @@ function setup(options) {
         isStatic: true,
         restitution: 1,
         plugin: {
-          sound: {
-            audio: (body) => {
-              instruments.conga.triggerAttack('G4')
+          collision: {
+            start: (collision) => {
+              if (collision.other.isSensor) {
+                instruments.conga.triggerAttack('G4')
+              }
             }
           }
         },
@@ -277,13 +258,17 @@ function setup(options) {
         fillStyle: '#041C3A',
       },
       plugin: {
-        sound: {
-          audio: (body, otherBody, options) => {
+        collision: {
+          start: (e) => {
+            let notes = [
+              'C2',
+              'F2',
+              'G5',
+            ]
 
-            let possibleNotes = body.plugin.sound.notes
-            let note = possibleNotes[Math.floor(Math.random()*possibleNotes.length)];
+            let note = notes[Math.floor(Math.random()*notes.length)];
 
-            switch (otherBody.plugin.sound.bodyName) {
+            switch (e.other.label) {
               case 'CEILING':
                 instruments.chords[0].triggerAttack(note)
 
@@ -304,17 +289,9 @@ function setup(options) {
                 // instruments.chords[0].triggerAttack('C4')
                 break
             }
-          },
-          notes: [
-            'C2',
-            'F2',
-            // 'B5',
-            'G5',
-          ],
-          playedTimes: 0,
-          selfOnly: true
+          }
         },
-      }
+      },
     }),
 
     Bodies.circle(600, 250, 20, {
@@ -329,18 +306,17 @@ function setup(options) {
         fillStyle: '#D5D6D8',
       },
       plugin: {
-        sound: {
-          audio: (body, otherBody, options) => {
+        collision: {
+          start: (collision) => {
+            let notes = [
+              'C4',
+              'G4',
+              'E4',
+            ]
 
-            let possibleNotes = body.plugin.sound.notes
-            // let noteIndex = body.plugin.sound.playedTimes % body.plugin.sound.notes.length
-            let note = possibleNotes[Math.floor(Math.random()*possibleNotes.length)];
+            let note = notes[Math.floor(Math.random()*notes.length)];
 
-            // items[Math.floor(Math.random()*items.length)];
-            // instruments.chord.triggerAttack()
-
-
-            switch (otherBody.plugin.sound.bodyName) {
+            switch (collision.other.label) {
               case 'CEILING':
                 instruments.chords[0].triggerAttack(note)
 
@@ -362,13 +338,6 @@ function setup(options) {
                 break
             }
           },
-          notes: [
-            'C4',
-            'G4',
-            'E4',
-          ],
-          playedTimes: 0,
-          selfOnly: true
         },
       }
     }),
@@ -406,31 +375,24 @@ function setup(options) {
 }
 
 
-/**
- * Instantiate MatterSound plugin
- */
-let matterSound = new MatterSound({
-	audios: [],
-})
+let config = {
+  canvasWidth: window.innerWidth,
+  canvasHeight: window.innerHeight,
+  canvas: document.querySelector('canvas'),
+  plugins: [
+  	new MatterCollisionStyles(),
+    Metaesquema.Matter.Plugins.maxVelocity({
+      maxVelocity: 10,
+    }),
+    new MatterCollision({
+      collisionMomentumUpperThreshold: 1000,
+    })
+  ]
+}
 
-matterSound.ready.then(() => {
-	let config = {
-	  canvasWidth: window.innerWidth,
-	  canvasHeight: window.innerHeight,
-	  canvas: document.querySelector('canvas'),
-	  plugins: [
-	  	matterSound,
-	  	new MatterCollisionStyles()
-	  ]
-	}
+let app = setup(config)
 
-	let app = setup(config)
-
-  let mousePositionElement = document.querySelector('#mouse-position')
-  document.querySelector('body').addEventListener('mousemove', e => {
-    mousePositionElement.innerHTML = `${e.clientX}x${e.clientY}`
-  })
-})
-.catch(err => {
-  console.warn(err)
+let mousePositionElement = document.querySelector('#mouse-position')
+document.querySelector('body').addEventListener('mousemove', e => {
+  mousePositionElement.innerHTML = `${e.clientX}x${e.clientY}`
 })

@@ -2172,6 +2172,206 @@ exports.write = function (buffer, value, offset, isLE, mLen, nBytes) {
 }
 
 },{}],5:[function(require,module,exports){
+function MatterCollision(options) {
+
+  options = options || {}
+
+  this.collisionMomentumUpperThreshold = options.collisionMomentumUpperThreshold || Infinity
+}
+
+MatterCollision.prototype.name = 'matter-collision'
+MatterCollision.prototype.version = '0.0.0' // PLUGIN_VERSION
+MatterCollision.prototype.for = 'matter-js@^0.12.0'
+
+MatterCollision.prototype.install = function (Matter) {
+  this.Matter = Matter
+
+  let self = this
+
+  this.Matter.after('Body.create', function () {
+    self.initBody(this)
+  })
+
+  this.Matter.after('Engine.create', function () {
+    self.initEngine(this)
+  })
+}
+
+MatterCollision.prototype.initBody = function (body) {
+  body.plugin.collision = body.plugin.collision || {}
+
+  // default options
+  body.plugin.collision = Object.assign({
+
+  }, body.plugin.collision)
+
+  let events = ['start', 'active', 'end']
+
+  // ensure reactions are in the object format (instead of the function shorthand)
+  events.forEach(eventName => {
+    let reaction = body.plugin.collision[eventName]
+    if (!reaction) {
+      return
+    }
+
+    if (typeof reaction === 'function') {
+      body.plugin.collision[eventName] = {
+        handler: reaction,
+      }
+    }
+
+    Object.assign(body.plugin.collision[eventName], {
+
+    }, body.plugin.collision[eventName])
+  })
+}
+
+MatterCollision.prototype.initEngine = function (engine) {
+  /**
+   * TODO: calculate collision impact
+   * As suggested at
+   * https://github.com/liabru/matter-js/issues/155
+   */
+  this.Matter.Events.on(engine, 'beforeUpdate', e => {
+    engine.world.bodies.forEach(function (body) {
+      body.plugin.collision._previousVelocity = {
+        x: body.velocity.x,
+        y: body.velocity.y
+      }
+    })
+  })
+
+  this.Matter.Events.on(engine, 'collisionStart', e => {
+    let pairs = e.pairs
+
+    pairs.forEach(pair => {
+
+      let bodyA = pair.bodyA
+      let bodyB = pair.bodyB
+
+      let bodyAReaction = bodyA.plugin.collision.start
+      let bodyBReaction = bodyB.plugin.collision.start
+
+      if (!bodyAReaction && !bodyBReaction) {
+        return
+      }
+
+      /**
+       * As suggested at
+       * https://github.com/liabru/matter-js/issues/155
+       */
+      let bodyAMomentum = this.Matter.Vector.mult(
+        bodyA.plugin.collision._previousVelocity || {x: 0, y: 0},
+        bodyA.mass === Infinity ? 0 : bodyA.mass
+      )
+      let bodyBMomentum = this.Matter.Vector.mult(
+        bodyB.plugin.collision._previousVelocity || {x: 0, y: 0},
+        bodyB.mass === Infinity ? 0 : bodyB.mass
+      )
+      let collisionMomentum = this.Matter.Vector.magnitude(
+        this.Matter.Vector.sub(bodyAMomentum, bodyBMomentum)
+      )
+      collisionMomentum = Math.min(collisionMomentum, this.collisionMomentumUpperThreshold)
+      let collisionIntensity = collisionMomentum / this.collisionMomentumUpperThreshold
+
+      if (bodyAReaction) {
+        bodyAReaction.handler({
+          self: bodyA,
+          other: bodyB,
+          event: e,
+
+          intensity: collisionIntensity,
+        })
+      }
+
+      if (bodyBReaction) {
+        bodyBReaction.handler({
+          self: bodyB,
+          other: bodyA,
+          event: e,
+
+          intensity: collisionIntensity,
+        })
+      }
+    })
+  })
+
+  this.Matter.Events.on(engine, 'collisionActive', e => {
+    let pairs = e.pairs
+
+    pairs.forEach(pair => {
+      let bodyA = pair.bodyA
+      let bodyB = pair.bodyB
+
+      let bodyAReaction = bodyA.plugin.collision.active
+      let bodyBReaction = bodyB.plugin.collision.active
+
+      if (!bodyAReaction && !bodyBReaction) {
+        return
+      }
+
+      if (bodyAReaction) {
+        bodyAReaction.handler({
+          self: bodyA,
+          other: bodyB,
+          event: e,
+        })
+      }
+
+      if (bodyBReaction) {
+        bodyBReaction.handler({
+          self: bodyB,
+          other: bodyA,
+          event: e,
+        })
+      }
+    })
+  })
+
+  this.Matter.Events.on(engine, 'collisionEnd', e => {
+    let pairs = e.pairs
+
+    pairs.forEach(pair => {
+      let bodyA = pair.bodyA
+      let bodyB = pair.bodyB
+
+      let bodyAReaction = bodyA.plugin.collision.end
+      let bodyBReaction = bodyB.plugin.collision.end
+
+      if (!bodyAReaction && !bodyBReaction) {
+        return
+      }
+
+      if (bodyAReaction) {
+        bodyAReaction.handler({
+          self: bodyA,
+          other: bodyB,
+          event: e,
+        })
+      }
+
+      if (bodyBReaction) {
+        bodyBReaction.handler({
+          self: bodyB,
+          other: bodyA,
+          event: e,
+        })
+      }
+    })
+  })
+}
+
+function _handleCollisionEvent(eventName, e) {
+  let pairs = e.pairs
+
+  pairs.forEach(pair => {
+    
+  })
+}
+
+module.exports = MatterCollision
+
+},{}],6:[function(require,module,exports){
 (function (global){
 /**
 * matter-js 0.13.0 by @liabru 2017-07-06
@@ -12451,7 +12651,170 @@ var Vector = _dereq_('../geometry/Vector');
 },{"../body/Composite":2,"../core/Common":14,"../core/Events":16,"../geometry/Bounds":26,"../geometry/Vector":28}]},{},[30])(30)
 });
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],6:[function(require,module,exports){
+},{}],7:[function(require,module,exports){
+exports.Matter = require('./matter')
+exports.Tone = require('./tone')
+
+},{"./matter":8,"./tone":9}],8:[function(require,module,exports){
+const Matter = require('matter-js')
+
+/**
+ * Create bodies for the walls
+ */
+exports.Bodies = {}
+exports.Bodies.walls = (canvas) => {
+  return {
+    top: (options) => {
+      return Matter.Bodies.rectangle(
+        canvas.width / 2, // align center to center
+        -(60 / 2),         
+        canvas.width, // width
+        60,  // height
+        Object.assign({}, { isStatic: true }, options)
+      )
+    },
+
+    bottom: (options) => {
+      return Matter.Bodies.rectangle(
+        canvas.width / 2, // align center to center
+        canvas.height + (60 / 2),         
+        canvas.width, // width
+        60,  // height
+        Object.assign({}, { isStatic: true }, options)
+      )
+    },
+
+    left: (options) => {
+      return Matter.Bodies.rectangle(
+        -(60 / 2), // align center to center
+        canvas.height / 2,         
+        60, // width
+        canvas.height,  // height
+        Object.assign({}, { isStatic: true }, options)
+      )
+    },
+
+    right: (options) => {
+      return Matter.Bodies.rectangle(
+        canvas.width + (60 / 2), // align center to center
+        canvas.height / 2,         
+        60, // width
+        canvas.height,  // height
+        Object.assign({}, { isStatic: true }, options)
+      )
+    }
+  }
+}
+
+/**
+ * Hacky way of running the engine even when the tab
+ * is in the background
+ */
+exports.Runner = {}
+exports.Runner.createMixedRunner = function (engine) {
+  let mixedRunner = {}
+
+  mixedRunner.fallbackIntervalId = undefined
+  mixedRunner.matterRunner = Matter.Runner.create()
+
+
+  function run() {
+    stop()
+
+    if (document.hasFocus()) {
+      Matter.Runner.run(mixedRunner.matterRunner, engine)
+    } else {
+
+      mixedRunner.fallbackIntervalId = setInterval(function() {
+        Matter.Engine.update(engine, 1000 / 60);
+      }, 1000 / 60);
+    }
+
+    window.addEventListener('blur', run)
+    window.addEventListener('focus', run)
+  }
+
+  function stop() {
+    if (mixedRunner.matterRunner.enabled) {
+      Matter.Runner.stop(mixedRunner.matterRunner)
+    }
+    
+    if (mixedRunner.fallbackIntervalId) {
+      clearInterval(mixedRunner.fallbackIntervalId)
+      mixedRunner.fallbackIntervalId = undefined
+    }
+
+    window.removeEventListener('blur', run)
+    window.removeEventListener('focus', run)
+  }
+
+  mixedRunner.run = run
+  mixedRunner.stop = stop
+
+  return mixedRunner
+}
+
+exports.Plugins = {}
+exports.Plugins.maxVelocity = function (options) {
+
+  let plugin = {
+    name: 'matter-max-velocity',
+    version: '0.0.0',
+    for: 'matter-js@^0.12.0'
+  }
+
+  let maxVelocity = options.maxVelocity
+  if (typeof maxVelocity === 'number') {
+    maxVelocity = {
+      x: maxVelocity,
+      y: maxVelocity,
+    }
+  }
+
+  let MAX_VELOCITY_X = maxVelocity.x
+  let MAX_VELOCITY_Y = maxVelocity.y
+  
+  plugin.install = (Matter) => {
+
+    Matter.after('Engine.create', function () {
+      let engine = this
+
+      /**
+       * TODO: calculate collision impact
+       * As suggested at
+       * https://github.com/liabru/matter-js/issues/155
+       */
+      Matter.Events.on(engine, 'afterUpdate', e => {
+        engine.world.bodies.forEach(function (body) {
+
+          let changed = false
+
+          let clampedVelocity = Object.assign({}, body.velocity)
+
+          if (Math.abs(body.velocity.x) > MAX_VELOCITY_X) {
+            changed = true
+            clampedVelocity.x = body.velocity.x > 0 ? MAX_VELOCITY_X : -1 * MAX_VELOCITY_X
+          }
+
+          if (Math.abs(body.velocity.y) > MAX_VELOCITY_Y) {
+            changed = true
+            clampedVelocity.y = body.velocity.y > 0 ? MAX_VELOCITY_Y : -1 * MAX_VELOCITY_Y
+          }
+
+          if (changed) {
+            Matter.Body.setVelocity(body, clampedVelocity)
+          }
+        })
+      })
+    })
+  }
+
+  return plugin
+}
+
+},{"matter-js":6}],9:[function(require,module,exports){
+
+},{}],10:[function(require,module,exports){
 (function(root, factory){
 
 	//UMD
@@ -36174,8 +36537,9 @@ var Vector = _dereq_('../geometry/Vector');
 	
 	return Tone;
 }));
-},{}],7:[function(require,module,exports){
+},{}],11:[function(require,module,exports){
 const Matter = require('matter-js')
+const Metaesquema = require('metaesquema-util')
 const instruments = require('./instruments')
 
 /**
@@ -36192,12 +36556,8 @@ const MouseConstraint = Matter.MouseConstraint
 const Events = Matter.Events
 const Common = Matter.Common
 
-const MatterSound = require('./lib/matter-sound')
+const MatterCollision = require('matter-collision')
 const MatterCollisionStyles = require('./lib/matter-collision-styles')
-
-function randomAudio() {
-	return AUDIOS[Math.floor(Math.random()*AUDIOS.length)].name
-}
 
 function setup(options) {
   const CANVAS_WIDTH = options.canvasWidth
@@ -36246,81 +36606,61 @@ function setup(options) {
   		height: CANVAS_HEIGHT,
   	}
   })
-
-  // create runner
-  let runner = Runner.create()
-
-  Runner.run(runner, engine)
   Render.run(render)
 
+  // create engine runner
+  let runner = Metaesquema.Matter.Runner.createMixedRunner(engine)
+  runner.run()
+
+  let wallGenerator = Metaesquema.Matter.Bodies.walls({
+    width: CANVAS_WIDTH,
+    height: CANVAS_HEIGHT,
+  })
+
   let walls = [
-  	// ceiling
-		Bodies.rectangle(
-	    CANVAS_WIDTH / 2, // align center to center
-	    -(60 / 2),         
-	    CANVAS_WIDTH, // width
-	    60,  // height
-	    {
-	      isStatic: true,
-	      restitution: 1,
-        plugin: {
-          sound: {
-            bodyName: 'CEILING',
-          }
+    wallGenerator.top({
+      label: 'CEILING',
+      restitution: 1,
+      plugin: {
+        sound: {
+          bodyName: 'CEILING'
         }
-	    }
-	  ),
-	  // ground
-		Bodies.rectangle(
-	    CANVAS_WIDTH / 2, // align center to center
-	    CANVAS_HEIGHT + (60 / 2),         
-	    CANVAS_WIDTH, // width
-	    60,  // height
-	    {
-	      isStatic: true,
-	      restitution: 1,
-        friction: 0,
-        frictionStatic: 0,
-        plugin: {
-          sound: {
-            bodyName: 'GROUND',
-          }
+      }
+    }),
+
+    wallGenerator.bottom({
+      label: 'GROUND',
+      restitution: 1,
+      friction: 0,
+      frictionStatic: 0,
+      plugin: {
+        sound: {
+          bodyName: 'GROUND',
         }
-	    }
-	  ),
-    
-	  // left
-		Bodies.rectangle(
-	    -(60 / 2), // align center to center
-	    CANVAS_HEIGHT / 2,         
-	    60, // width
-	    CANVAS_HEIGHT,  // height
-	    {
-	      isStatic: true,
-	      restitution: 1,
-        plugin: {
-          sound: {
-            bodyName: 'LEFT',
-          }
+      }
+    }),
+
+    wallGenerator.left({
+      label: 'LEFT',
+      isStatic: true,
+      restitution: 1,
+      plugin: {
+        sound: {
+          bodyName: 'LEFT',
         }
-	    }
-	  ),
-	  // right
-		Bodies.rectangle(
-	    CANVAS_WIDTH + (60 / 2), // align center to center
-	    CANVAS_HEIGHT / 2,         
-	    60, // width
-	    CANVAS_HEIGHT,  // height
-	    {
-	      isStatic: true,
-	      restitution: 1,
-        plugin: {
-          sound: {
-            bodyName: 'RIGHT',
-          }
+      }
+    }),
+
+    wallGenerator.right({
+      label: 'RIGHT',
+      isStatic: true,
+      restitution: 1,
+      plugin: {
+        sound: {
+          bodyName: 'RIGHT',
         }
-	    }
-	  ),
+      }
+    }),
 	]
 
   World.add(engine.world, walls)
@@ -36339,9 +36679,11 @@ function setup(options) {
         isStatic: true,
         restitution: 1,
         plugin: {
-          sound: {
-            audio: (body) => {
-              instruments.conga.triggerAttack('G3')
+          collision: {
+            start: (collision) => {
+              if (collision.other.isSensor) {
+                instruments.conga.triggerAttack('G3')
+              }
             }
           }
         },
@@ -36359,9 +36701,11 @@ function setup(options) {
         isStatic: true,
         restitution: 1,
         plugin: {
-          sound: {
-            audio: (body) => {
-              instruments.conga.triggerAttack('G4')
+          collision: {
+            start: (collision) => {
+              if (collision.other.isSensor) {
+                instruments.conga.triggerAttack('G4')
+              }
             }
           }
         },
@@ -36454,13 +36798,17 @@ function setup(options) {
         fillStyle: '#041C3A',
       },
       plugin: {
-        sound: {
-          audio: (body, otherBody, options) => {
+        collision: {
+          start: (e) => {
+            let notes = [
+              'C2',
+              'F2',
+              'G5',
+            ]
 
-            let possibleNotes = body.plugin.sound.notes
-            let note = possibleNotes[Math.floor(Math.random()*possibleNotes.length)];
+            let note = notes[Math.floor(Math.random()*notes.length)];
 
-            switch (otherBody.plugin.sound.bodyName) {
+            switch (e.other.label) {
               case 'CEILING':
                 instruments.chords[0].triggerAttack(note)
 
@@ -36481,17 +36829,9 @@ function setup(options) {
                 // instruments.chords[0].triggerAttack('C4')
                 break
             }
-          },
-          notes: [
-            'C2',
-            'F2',
-            // 'B5',
-            'G5',
-          ],
-          playedTimes: 0,
-          selfOnly: true
+          }
         },
-      }
+      },
     }),
 
     Bodies.circle(600, 250, 20, {
@@ -36506,18 +36846,17 @@ function setup(options) {
         fillStyle: '#D5D6D8',
       },
       plugin: {
-        sound: {
-          audio: (body, otherBody, options) => {
+        collision: {
+          start: (collision) => {
+            let notes = [
+              'C4',
+              'G4',
+              'E4',
+            ]
 
-            let possibleNotes = body.plugin.sound.notes
-            // let noteIndex = body.plugin.sound.playedTimes % body.plugin.sound.notes.length
-            let note = possibleNotes[Math.floor(Math.random()*possibleNotes.length)];
+            let note = notes[Math.floor(Math.random()*notes.length)];
 
-            // items[Math.floor(Math.random()*items.length)];
-            // instruments.chord.triggerAttack()
-
-
-            switch (otherBody.plugin.sound.bodyName) {
+            switch (collision.other.label) {
               case 'CEILING':
                 instruments.chords[0].triggerAttack(note)
 
@@ -36539,13 +36878,6 @@ function setup(options) {
                 break
             }
           },
-          notes: [
-            'C4',
-            'G4',
-            'E4',
-          ],
-          playedTimes: 0,
-          selfOnly: true
         },
       }
     }),
@@ -36583,36 +36915,29 @@ function setup(options) {
 }
 
 
-/**
- * Instantiate MatterSound plugin
- */
-let matterSound = new MatterSound({
-	audios: [],
+let config = {
+  canvasWidth: window.innerWidth,
+  canvasHeight: window.innerHeight,
+  canvas: document.querySelector('canvas'),
+  plugins: [
+  	new MatterCollisionStyles(),
+    Metaesquema.Matter.Plugins.maxVelocity({
+      maxVelocity: 10,
+    }),
+    new MatterCollision({
+      collisionMomentumUpperThreshold: 1000,
+    })
+  ]
+}
+
+let app = setup(config)
+
+let mousePositionElement = document.querySelector('#mouse-position')
+document.querySelector('body').addEventListener('mousemove', e => {
+  mousePositionElement.innerHTML = `${e.clientX}x${e.clientY}`
 })
 
-matterSound.ready.then(() => {
-	let config = {
-	  canvasWidth: window.innerWidth,
-	  canvasHeight: window.innerHeight,
-	  canvas: document.querySelector('canvas'),
-	  plugins: [
-	  	matterSound,
-	  	new MatterCollisionStyles()
-	  ]
-	}
-
-	let app = setup(config)
-
-  let mousePositionElement = document.querySelector('#mouse-position')
-  document.querySelector('body').addEventListener('mousemove', e => {
-    mousePositionElement.innerHTML = `${e.clientX}x${e.clientY}`
-  })
-})
-.catch(err => {
-  console.warn(err)
-})
-
-},{"./instruments":8,"./lib/matter-collision-styles":9,"./lib/matter-sound":11,"matter-js":5}],8:[function(require,module,exports){
+},{"./instruments":12,"./lib/matter-collision-styles":13,"matter-collision":5,"matter-js":6,"metaesquema-util":7}],12:[function(require,module,exports){
 const Tone = require('tone')
 
 exports.conga = new Tone.MembraneSynth({
@@ -36659,7 +36984,7 @@ exports.chords = [
 	return new Tone.PluckSynth(options).toMaster()
 })
 
-},{"tone":6}],9:[function(require,module,exports){
+},{"tone":10}],13:[function(require,module,exports){
 const clone = require('clone')
 
 function MatterCollisionStyles(options) {
@@ -36737,259 +37062,4 @@ MatterCollisionStyles.prototype.initEngine = function (engine) {
 
 module.exports = MatterCollisionStyles
 
-},{"clone":3}],10:[function(require,module,exports){
-exports.loadAudio = function (audioSrc) {
-
-	return new Promise((resolve, reject) => {
-		let audio = new Audio(audioSrc)
-
-		function _removeEventListeners() {
-			audio.removeEventListener('error', _reject)
-			audio.removeEventListener('canplaythrough', _resolve)
-			audio.removeEventListener('loadeddata', _resolve)
-		}
-
-		function _reject(err) {
-			_removeEventListeners()
-			reject(err)
-		}
-
-		function _resolve() {
-			_removeEventListeners()
-			resolve(audio)
-		}
-
-		audio.addEventListener('error', _reject)
-		audio.addEventListener('canplaythrough', _resolve)
-		audio.addEventListener('loadeddata', _resolve)
-	})
-}
-
-},{}],11:[function(require,module,exports){
-const aux = require('./auxiliary')
-
-const MATTER_SOUND_DEFAULTS = {
-	audios: []
-}
-
-const VOLUME_MAGNITUDE_MAX = 6000
-const VOLUME_MAGNITUDE_MIN = 500
-
-function MatterSound(options) {
-	options = Object.assign({}, MATTER_SOUND_DEFAULTS, options)
-
-	this.ready = Promise.all(options.audios.map(audioDef => {
-		if (!audioDef.name || !audioDef.src) {
-			throw new Error('invalid audioDef')
-		}
-
-		return aux.loadAudio(audioDef.src)
-	}))
-	.then(audioElements => {
-		this.audios = audioElements.map((element, index) => {
-			let def = options.audios[index]
-			def.element = element
-
-			return def
-		})
-
-		return this
-	})
-}
-
-MatterSound.prototype.name = 'matter-sound' // PLUGIN_NAME
-MatterSound.prototype.version = '0.0.0' // PLUGIN_VERSION
-MatterSound.prototype.for = 'matter-js@^0.12.0'
-
-MatterSound.prototype.install = function (Matter) {
-
-
-	this.Matter = Matter
-
-	let self = this
-
-  this.Matter.after('Body.create', function () {
-    self.initBody(this)
-  })
-
-  this.Matter.after('Engine.create', function () {
-  	self.initEngine(this)
-  })
-}
-
-MatterSound.prototype.initBody = function (body) {
-	body.plugin.sound = body.plugin.sound || {}
-
-	body.plugin.sound = Object.assign({
-
-	}, body.plugin.sound)
-}
-
-MatterSound.prototype.initEngine = function (engine) {
-
-  this.Matter.Events.on(engine, 'beforeUpdate', function () {
-		/**
-		 * As suggested at
-		 * https://github.com/liabru/matter-js/issues/155
-		 */
-    engine.world.bodies.forEach(function (body) {
-      body._velocity = Object.assign({}, body.velocity)
-    })
-  })
-
-
-  // an example of using collisionStart event on an engine
-  this.Matter.Events.on(engine, 'collisionStart', event => {
-    let pairs = event.pairs
-
-    pairs.forEach(pair => {
-    	/**
-    	 * As suggested at
-    	 * https://github.com/liabru/matter-js/issues/155
-    	 */
-   //  	let bodyAMomentum = this.Matter.Vector.mult(
-   //  		pair.bodyA._velocity || {x: 0, y: 0},
-   //  		pair.bodyA.mass === Infinity ? 0 : pair.bodyA.mass
-   //  	)
-			// let bodyBMomentum = this.Matter.Vector.mult(
-			// 	pair.bodyB._velocity || {x: 0, y: 0},
-			// 	pair.bodyB.mass === Infinity ? 0 : pair.bodyB.mass
-			// )
-			// let relativeMomentum = this.Matter.Vector.sub(bodyAMomentum, bodyBMomentum)
-			// let relativeMomentumMagnitude = this.Matter.Vector.magnitude(relativeMomentum)
-
-			// if (relativeMomentumMagnitude >= VOLUME_MAGNITUDE_MIN) {
-			// 	// TODO: this is a hack
-			// 	let volume = Math.min(
-			// 		relativeMomentumMagnitude / VOLUME_MAGNITUDE_MAX,
-			// 		1
-			// 	)
-
-	  //   	this.playBodyCollisionAudio(pair.bodyA, {
-	  //   		volume: volume
-	  //   	})
-	  //   	this.playBodyCollisionAudio(pair.bodyB, {
-	  //   		volume: volume
-	  //   	})
-			// }
-			
-			if (pair.bodyA.plugin.sound.selfOnly) {
-	    	this.playBodyCollisionAudio(pair.bodyA, {
-	    		otherBody: pair.bodyB,
-	    		volume: 1
-	    	})
-			} else if (pair.bodyB.plugin.sound.selfOnly) {
-	    	this.playBodyCollisionAudio(pair.bodyB, {
-	    		otherBody: pair.bodyA,
-	    		volume: 1
-	    	})
-			} else {
-	    	this.playBodyCollisionAudio(pair.bodyA, {
-	    		otherBody: pair.bodyB,
-	    		volume: 1
-	    	})
-	    	this.playBodyCollisionAudio(pair.bodyB, {
-	    		otherBody: pair.bodyA,
-	    		volume: 1
-	    	})
-			}
-
-
-
-
-
-      // pair.bodyA.previousFillStyle = pair.bodyA.render.fillStyle
-      // pair.bodyB.previousFillStyle = pair.bodyB.render.fillStyle
-
-      // pair.bodyA.render.fillStyle = '#333'
-      // pair.bodyB.render.fillStyle = '#333'
-    })
-  })
-
-  // an example of using collisionActive event on an engine
-  this.Matter.Events.on(engine, 'collisionActive', event => {
-    let pairs = event.pairs
-
-    // change object colours to show those in an active collision (e.g. resting contact)
-    pairs.forEach(pair => {
-      // pair.bodyA.render.fillStyle = '#333'
-      // pair.bodyB.render.fillStyle = '#333'
-    })
-  });
-
-  // an example of using collisionEnd event on an engine
-  this.Matter.Events.on(engine, 'collisionEnd', event => {
-    let pairs = event.pairs
-
-    // change object colours to show those ending a collision
-    pairs.forEach(pair => {
-      // pair.bodyA.render.fillStyle = pair.bodyA.previousFillStyle || '#222'
-      // pair.bodyB.render.fillStyle = pair.bodyB.previousFillStyle || '#222'
-    })
-
-  })
-
-}
-
-MatterSound.prototype.playBodyCollisionAudio = function (body, options) {
-	options = Object.assign({
-		volume: 1,
-	}, options)
-
-	if (typeof body.plugin.sound.audio === 'string') {
-		let bodyAudio = this.audios.find(audio => {
-			return audio.name === body.plugin.sound.audio
-		})
-
-		if (bodyAudio) {
-
-			if (typeof bodyAudio === 'function') {
-				
-			} else {
-
-				// clone the node so that all plays
-				// of the same sound are kept separate and
-				// may be executed simultaneously and their configurations
-				// may be independent
-				let clonedAudioElement = bodyAudio.element.cloneNode()
-
-				clonedAudioElement.volume = options.volume
-				clonedAudioElement.play()
-			}
-		}
-	} else if (typeof body.plugin.sound.audio === 'function') {
-
-		// 
-		body.plugin.sound.audio.call(null, body, options.otherBody, options)
-	}
-
-	// HACK FOR ALTERNATE AUDIOS
-	if (body.plugin.sound.alternateAudios) {
-		let currentAudioIndex = body.plugin.sound.currentAudioIndex || 0
-		let targetAudioIndex = body.plugin.sound.alternateAudios.length > currentAudioIndex + 1 ?
-			currentAudioIndex + 1 : 0
-
-		let targetAudio = this.audios.find(audio => {
-			return audio.name === body.plugin.sound.alternateAudios[targetAudioIndex]
-		})
-
-		console.log(`play ${targetAudio.name}`)
-
-		if (targetAudio) {
-			// clone the node so that all plays
-			// of the same sound are kept separate and
-			// may be executed simultaneously and their configurations
-			// may be independent
-			let clonedAudioElement = targetAudio.element.cloneNode()
-
-			clonedAudioElement.volume = options.volume
-			clonedAudioElement.play()
-
-			body.plugin.sound.currentAudioIndex = targetAudioIndex
-		}
-	}
-}
-
-module.exports = MatterSound
-
-},{"./auxiliary":10}]},{},[7]);
+},{"clone":3}]},{},[11]);
